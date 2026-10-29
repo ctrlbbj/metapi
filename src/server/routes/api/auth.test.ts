@@ -63,4 +63,22 @@ describe('auth routes', () => {
       message: 'Invalid newToken. Expected string.',
     });
   });
+
+  it('revokes monitor sessions issued under the previous admin token', async () => {
+    const { issueMonitorSession, isMonitorSessionValid } = await import('../../services/monitorSessionStore.js');
+    const sessionId = issueMonitorSession();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/settings/auth/change',
+      payload: {
+        oldToken: 'secret-token',
+        newToken: 'rotated-secret-token',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(config.authToken).toBe('rotated-secret-token');
+    expect(isMonitorSessionValid(sessionId)).toBe(false);
+  });
 });

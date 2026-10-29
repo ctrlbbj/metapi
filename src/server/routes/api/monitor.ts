@@ -1,10 +1,14 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { db, schema } from '../../db/index.js';
 import { upsertSetting } from '../../db/upsertSetting.js';
-import { config } from '../../config.js';
 import { eq } from 'drizzle-orm';
 import { createRateLimitGuard } from '../../middleware/requestRateLimit.js';
 import { parseMonitorConfigPayload } from '../../contracts/supportRoutePayloads.js';
+import {
+  MONITOR_SESSION_MAX_AGE_SEC,
+  isMonitorSessionValid,
+  issueMonitorSession,
+} from '../../services/monitorSessionStore.js';
 
 const MONITOR_AUTH_COOKIE = 'meta_monitor_auth';
 const LDOH_BASE_URL = 'https://ldoh.105117.xyz';
@@ -112,7 +116,7 @@ function rewriteLocationHeader(location: string | null): string | null {
 
 function ensureMonitorAuth(request: FastifyRequest, reply: FastifyReply): boolean {
   const cookies = parseCookies(request.headers.cookie);
-  if (cookies[MONITOR_AUTH_COOKIE] !== config.authToken) {
+  if (!isMonitorSessionValid(cookies[MONITOR_AUTH_COOKIE])) {
     reply.code(401).send({ error: 'Missing or invalid monitor session' });
     return false;
   }
@@ -171,7 +175,7 @@ export async function monitorRoutes(app: FastifyInstance) {
     // HttpOnly cookie for iframe proxy auth within current origin.
     reply.header(
       'Set-Cookie',
-      `${MONITOR_AUTH_COOKIE}=${config.authToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=7200`,
+      `${MONITOR_AUTH_COOKIE}=${issueMonitorSession()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${MONITOR_SESSION_MAX_AGE_SEC}`,
     );
     return { success: true };
   });

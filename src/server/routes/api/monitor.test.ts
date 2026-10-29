@@ -5,12 +5,16 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { eq } from 'drizzle-orm';
 
+type ConfigModule = typeof import('../../config.js');
 type DbModule = typeof import('../../db/index.js');
+type MonitorSessionModule = typeof import('../../services/monitorSessionStore.js');
 
 describe('monitor routes', () => {
   let app: FastifyInstance;
   let db: DbModule['db'];
   let schema: DbModule['schema'];
+  let config: ConfigModule['config'];
+  let clearMonitorSessions: MonitorSessionModule['clearMonitorSessions'];
   let dataDir = '';
 
   beforeAll(async () => {
@@ -20,8 +24,12 @@ describe('monitor routes', () => {
     await import('../../db/migrate.js');
     const dbModule = await import('../../db/index.js');
     const routesModule = await import('./monitor.js');
+    const configModule = await import('../../config.js');
+    const monitorSessionModule = await import('../../services/monitorSessionStore.js');
     db = dbModule.db;
     schema = dbModule.schema;
+    config = configModule.config;
+    clearMonitorSessions = monitorSessionModule.clearMonitorSessions;
 
     app = Fastify();
     await app.register(routesModule.monitorRoutes);
@@ -29,6 +37,7 @@ describe('monitor routes', () => {
 
   beforeEach(async () => {
     await db.delete(schema.settings).run();
+    clearMonitorSessions();
   });
 
   afterAll(async () => {
@@ -80,5 +89,50 @@ describe('monitor routes', () => {
       .where(eq(schema.settings.key, 'monitor_ldoh_cookie'))
       .get();
     expect(saved?.value).toBe('""');
+  });
+
+  async function issueMonitorSessionCookie(): Promise<string> {
+    const response = await app.inject({ method: 'POST', url: '/api/monitor/session' });
+    expect(response.statusCode).toBe(200);
+    const setCookie = String(response.headers['set-cookie'] || '');
+    const match = /^meta_monitor_auth=([^;]*);/.exec(setCookie);
+    expect(match).not.toBeNull();
+    return match![1];
+  }
+
+  it('issues an opaque monitor session cookie instead of the admin token', async () => {
+    const sessionId = await issueMonitorSessionCookie();
+
+    expect(sessionId).not.toBe(config.authToken);
+    expect(sessionId).not.toContain(config.authToken);
+    expect(sessionId.length).toBeGreaterThanOrEqual(43);
+    expect(await issueMonitorSessionCookie()).not.toBe(sessionId);
+  });
+
+  it('accepts only issued monitor sessions on the LDOH proxy', async () => {
+    const sessionId = await issueMonitorSessionCookie();
+
+    const withSession = await app.inject({
+      method: 'GET',
+      url: '/monitor-proxy/ldoh/',
+      headers: { cookie: `meta_monitor_auth=${sessionId}` },
+    });
+    // Authenticated, then stops before any upstream fetch because no LDOH cookie is stored.
+    expect(withSession.statusCode).toBe(400);
+
+    const withAdminToken = await app.inject({
+      method: 'GET',
+      url: '/monitor-proxy/ldoh/',
+      headers: { cookie: `meta_monitor_auth=${config.authToken}` },
+    });
+    expect(withAdminToken.statusCode).toBe(401);
+
+    clearMonitorSessions();
+    const afterClear = await app.inject({
+      method: 'GET',
+      url: '/monitor-proxy/ldoh/',
+      headers: { cookie: `meta_monitor_auth=${sessionId}` },
+    });
+    expect(afterClear.statusCode).toBe(401);
   });
 });

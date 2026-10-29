@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { formatUtcSqlDateTime } from '../../services/localTimeService.js';
 import { createRateLimitGuard } from '../../middleware/requestRateLimit.js';
 import { parseAuthChangePayload } from '../../contracts/supportRoutePayloads.js';
+import { clearMonitorSessions } from '../../services/monitorSessionStore.js';
 
 const limitAdminTokenChange = createRateLimitGuard({
   bucket: 'auth-change',
@@ -47,6 +48,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     // Update runtime config
     config.authToken = newToken;
+    clearMonitorSessions();
 
     try {
       const createdAt = formatUtcSqlDateTime(new Date());
