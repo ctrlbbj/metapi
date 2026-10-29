@@ -80,16 +80,10 @@ export function findInvalidIpAllowlistEntries(allowlist: string[]): string[] {
   return allowlist.filter((item) => parseAllowlistEntry(item) === null);
 }
 
-export function extractClientIp(remoteIp: string | null | undefined, xForwardedFor?: string | string[] | undefined): string {
-  if (Array.isArray(xForwardedFor)) {
-    const first = xForwardedFor.find((item) => item && item.trim().length > 0);
-    if (first) {
-      return normalizeIp(first.split(',')[0]);
-    }
-  } else if (typeof xForwardedFor === 'string' && xForwardedFor.trim().length > 0) {
-    return normalizeIp(xForwardedFor.split(',')[0]);
-  }
-  return normalizeIp(remoteIp);
+// request.ip already walks X-Forwarded-For through the trusted proxy hops (config.trustProxy);
+// re-reading the leftmost entry here would let any client choose its own IP.
+export function extractClientIp(requestIp: string | null | undefined): string {
+  return normalizeIp(requestIp);
 }
 
 export function isIpAllowed(clientIp: string, allowlist: string[]): boolean {
@@ -117,7 +111,7 @@ export function requiresAdminAuth(request: FastifyRequest): boolean {
 }
 
 export async function authMiddleware(request: FastifyRequest, reply: FastifyReply) {
-  const clientIp = extractClientIp(request.ip, request.headers['x-forwarded-for']);
+  const clientIp = extractClientIp(request.ip);
   if (!isIpAllowed(clientIp, config.adminIpAllowlist)) {
     reply.code(403).send({ error: 'IP not allowed' });
     return;

@@ -50,9 +50,10 @@ describe('admin auth hook', () => {
 });
 
 describe('auth middleware IP helpers', () => {
-  it('extracts first forwarded IP and normalizes ipv4-mapped address', () => {
-    const ip = extractClientIp('::ffff:10.0.0.1', '198.51.100.7, 203.0.113.2');
-    expect(ip).toBe('198.51.100.7');
+  it('normalizes the resolved request IP without re-reading forwarded headers', () => {
+    expect(extractClientIp('::ffff:10.0.0.1')).toBe('10.0.0.1');
+    expect(extractClientIp('::1')).toBe('127.0.0.1');
+    expect(extractClientIp(' 203.0.113.2 ')).toBe('203.0.113.2');
   });
 
   it('allows request when allowlist is empty', () => {

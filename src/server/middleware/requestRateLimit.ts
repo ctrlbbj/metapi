@@ -23,17 +23,9 @@ function normalizeIp(rawIp: string | null | undefined): string {
   return ip;
 }
 
+// request.ip already walks X-Forwarded-For through the trusted proxy hops (config.trustProxy);
+// keying on the leftmost entry would let any client pick a fresh bucket per request.
 function extractClientIp(request: FastifyRequest): string {
-  const forwarded = request.headers['x-forwarded-for'];
-  if (Array.isArray(forwarded)) {
-    const first = forwarded.find((value) => typeof value === 'string' && value.trim().length > 0);
-    if (first) return normalizeIp(first.split(',')[0]);
-  }
-
-  if (typeof forwarded === 'string' && forwarded.trim().length > 0) {
-    return normalizeIp(forwarded.split(',')[0]);
-  }
-
   return normalizeIp(request.ip);
 }
 

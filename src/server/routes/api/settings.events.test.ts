@@ -30,7 +30,7 @@ describe('settings and auth events', () => {
     schema = dbModule.schema;
     config = configModule.config;
 
-    app = Fastify();
+    app = Fastify({ trustProxy: configModule.buildConfig({}).trustProxy });
     await app.register(settingsRoutesModule.settingsRoutes);
     await app.register(authRoutesModule.authRoutes);
   });

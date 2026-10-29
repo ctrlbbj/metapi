@@ -59,6 +59,22 @@ export function normalizeTokenRouterFailureCooldownMaxSec(value: unknown): numbe
   );
 }
 
+// Peers whose X-Forwarded-For entries Fastify may use when resolving request.ip. The default
+// covers reverse proxies on the same host or a private network, so a client that connects
+// directly cannot choose its own IP. TRUST_PROXY takes a comma-separated IP/CIDR list (add a
+// CDN's ranges when it sits in front), a hop count, or "true" to trust every hop.
+const DEFAULT_TRUST_PROXY = ['loopback', 'linklocal', 'uniquelocal'];
+
+function parseTrustProxy(value: string | undefined): boolean | number | string[] {
+  const normalized = (value || '').trim();
+  if (!normalized) return [...DEFAULT_TRUST_PROXY];
+  const lowered = normalized.toLowerCase();
+  if (lowered === 'true') return true;
+  if (lowered === 'false') return false;
+  if (/^\d+$/.test(normalized)) return Number(normalized);
+  return parseCsvList(normalized);
+}
+
 function parseListenHost(env: NodeJS.ProcessEnv): string {
   return (env.HOST || '0.0.0.0').trim() || '0.0.0.0';
 }
@@ -113,6 +129,7 @@ export function buildConfig(env: NodeJS.ProcessEnv) {
     adminIpAllowlist: parseCsvList(env.ADMIN_IP_ALLOWLIST),
     port: Math.trunc(parseNumber(env.PORT, 4000)),
     listenHost: parseListenHost(env),
+    trustProxy: parseTrustProxy(env.TRUST_PROXY),
     dataDir,
     dbType: parseDbType(env.DB_TYPE),
     dbUrl: (env.DB_URL || '').trim(),
@@ -179,7 +196,7 @@ export function buildFastifyOptions(
 ): FastifyServerOptions {
   return {
     logger: true,
-    trustProxy: true,
+    trustProxy: appConfig.trustProxy,
     bodyLimit: appConfig.requestBodyLimit,
   };
 }

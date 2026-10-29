@@ -106,4 +106,43 @@ describe('buildConfig', () => {
     expect(response.json()).toEqual({ ip: '203.0.113.5' });
     await app.close();
   });
+
+  async function resolveRequestIp(
+    env: NodeJS.ProcessEnv,
+    remoteAddress: string,
+    forwardedFor?: string,
+  ): Promise<string> {
+    const app = Fastify(buildFastifyOptions(buildConfig(env)));
+    app.get('/ip', async (request) => ({ ip: request.ip }));
+    const response = await app.inject({
+      method: 'GET',
+      url: '/ip',
+      remoteAddress,
+      headers: forwardedFor ? { 'x-forwarded-for': forwardedFor } : {},
+    });
+    await app.close();
+    return (response.json() as { ip: string }).ip;
+  }
+
+  it('ignores X-Forwarded-For sent by a public peer by default', async () => {
+    expect(await resolveRequestIp({}, '198.51.100.9', '8.8.4.4')).toBe('198.51.100.9');
+  });
+
+  it('does not let a client prepend its own address in front of a trusted proxy', async () => {
+    expect(await resolveRequestIp({}, '10.0.0.8', '8.8.4.4, 198.51.100.9')).toBe('198.51.100.9');
+  });
+
+  it('resolves the client behind CDN ranges listed in TRUST_PROXY', async () => {
+    const env = { TRUST_PROXY: 'loopback, uniquelocal, 172.64.0.0/13' };
+    expect(await resolveRequestIp(env, '172.22.0.1', '8.8.4.4, 203.0.113.7, 172.71.24.85')).toBe('203.0.113.7');
+    expect(await resolveRequestIp(env, '172.22.0.1', '8.8.4.4, 198.51.100.9')).toBe('198.51.100.9');
+  });
+
+  it('parses TRUST_PROXY switches and hop counts', async () => {
+    expect(buildConfig({}).trustProxy).toEqual(['loopback', 'linklocal', 'uniquelocal']);
+    expect(buildConfig({ TRUST_PROXY: 'true' }).trustProxy).toBe(true);
+    expect(buildConfig({ TRUST_PROXY: 'false' }).trustProxy).toBe(false);
+    expect(buildConfig({ TRUST_PROXY: '2' }).trustProxy).toBe(2);
+    expect(await resolveRequestIp({ TRUST_PROXY: 'true' }, '198.51.100.9', '8.8.4.4')).toBe('8.8.4.4');
+  });
 });
