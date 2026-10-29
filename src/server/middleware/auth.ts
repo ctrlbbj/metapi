@@ -1,6 +1,7 @@
 import { isIP } from 'node:net';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { config } from '../config.js';
+import { isPublicApiRoute } from '../desktop.js';
 import { authorizeDownstreamToken, consumeManagedKeyRequest } from '../services/downstreamApiKeyService.js';
 import { EMPTY_DOWNSTREAM_ROUTING_POLICY, type DownstreamRoutingPolicy } from '../services/downstreamPolicyTypes.js';
 
@@ -104,6 +105,15 @@ export function isIpAllowed(clientIp: string, allowlist: string[]): boolean {
     if (clientIpv4Value === null) return false;
     return (clientIpv4Value & entry.mask) === entry.network;
   });
+}
+
+// Decide on the matched route pattern, not the raw URL: the router percent-decodes paths,
+// so a raw-URL prefix check lets /%61pi/... reach /api handlers without the admin token.
+// Unmatched requests have no route pattern and fall back to the raw URL.
+export function requiresAdminAuth(request: FastifyRequest): boolean {
+  const routeUrl = request.routeOptions?.url;
+  const path = typeof routeUrl === 'string' && routeUrl ? routeUrl : request.url;
+  return path.startsWith('/api/') && !isPublicApiRoute(path);
 }
 
 export async function authMiddleware(request: FastifyRequest, reply: FastifyReply) {

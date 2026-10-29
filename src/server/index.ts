@@ -5,7 +5,7 @@ import {
   buildFastifyOptions,
   config,
 } from './config.js';
-import { authMiddleware } from './middleware/auth.js';
+import { authMiddleware, requiresAdminAuth } from './middleware/auth.js';
 import { sitesRoutes } from './routes/api/sites.js';
 import { accountsRoutes } from './routes/api/accounts.js';
 import { checkinRoutes } from './routes/api/checkin.js';
@@ -59,7 +59,7 @@ import {
 } from './services/usageAggregationService.js';
 import { reloadBackupWebdavScheduler } from './services/backupService.js';
 import { ensureRuntimeDatabaseReady } from './runtimeDatabaseBootstrap.js';
-import { isPublicApiRoute, registerDesktopRoutes } from './desktop.js';
+import { registerDesktopRoutes } from './desktop.js';
 import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, normalize, resolve, sep } from 'path';
@@ -205,7 +205,7 @@ await app.register(cors);
 
 // Auth middleware for /api routes
 app.addHook('onRequest', async (request, reply) => {
-  if (request.url.startsWith('/api/') && !isPublicApiRoute(request.url)) {
+  if (requiresAdminAuth(request)) {
     await authMiddleware(request, reply);
   }
 });
